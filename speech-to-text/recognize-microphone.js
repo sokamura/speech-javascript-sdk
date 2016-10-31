@@ -22,6 +22,7 @@ var L16 = require('./webaudio-l16-stream.js');
 var FormatStream = require('./format-stream.js');
 var assign = require('object.assign/polyfill')();
 var WritableElementStream = require('./writable-element-stream');
+var ResultStream = require('./result-stream');
 var Writable = require('stream').Writable;
 
 var preservedMicStream;
@@ -47,7 +48,7 @@ var bitBucket = new Writable({
  * @param {Boolean} [options.keepMicrophone=false] - keeps an internal reference to the microphone stream to reuse in subsequent calls (prevents multiple permissions dialogs in firefox)
  * @param {String|DOMElement} [options.outputElement] pipe the text to a WriteableElementStream targeting the specified element. Also defaults objectMode to true to enable interim results.
  *
- * @returns {RecognizeStream|FormatStream}
+ * @returns {ResultStream}
  */
 module.exports = function recognizeMicrophone(options) {
   if (!options || !options.token) {
@@ -72,12 +73,16 @@ module.exports = function recognizeMicrophone(options) {
   rsOpts['content-type'] = 'audio/l16;rate=16000';
   delete rsOpts.objectMode;
 
+
+  var resultsStream = new ResultStream({objectMode: options.objectMode});
   var recognizeStream = new RecognizeStream(rsOpts);
+  resultsStream.propagateEventsFrom(recognizeStream);
 
   var keepMic = options.keepMicrophone;
   var getMicStream;
   if (keepMic && preservedMicStream) {
     preservedMicStream.unpipe(bitBucket);
+    preservedMicStream.removeAllListeners('error'); // don't send errors to the previous resultsStream, start sending them to the new one.
     getMicStream = Promise.resolve(preservedMicStream);
   } else {
     getMicStream = getUserMedia({video: false, audio: true}).then(function(mic) {
@@ -92,24 +97,30 @@ module.exports = function recognizeMicrophone(options) {
     });
   }
 
-  // set up the output first so that we have a place to emit errors
-  // if there's trouble with the input stream
+  // for formatStream, we want to pipe *through* it, including it in the chain returned from this function
+  // we also want to propgate errors
   var stream = recognizeStream;
   if (options.format) {
     stream = stream.pipe(new FormatStream(options));
-    stream.stop = recognizeStream.stop.bind(recognizeStream);
+    resultsStream.propagateErrorsFrom(stream);
   }
+
 
   if (options.outputElement) {
-    stream.pipe(new WritableElementStream(options));
+    resultsStream.propagateErrorsFrom(
+      stream.pipe(new WritableElementStream(options))
+    );
   }
 
-  getMicStream.catch(function(err) {
-    stream.emit('error', err);
-  });
+
+  stream.pipe(resultsStream);
+  resultsStream.stop = recognizeStream.stop.bind(recognizeStream);
 
   getMicStream.then(function(micStream) {
+    resultsStream.propagateErrorsFrom(micStream);
+
     var l16Stream = new L16({writableObjectMode: true});
+    resultsStream.propagateErrorsFrom(l16Stream);
 
     micStream
       .pipe(l16Stream)
@@ -139,21 +150,9 @@ module.exports = function recognizeMicrophone(options) {
       recognizeStream.on('stop', micStream.stop.bind(micStream));
     }
 
-  }).catch(recognizeStream.emit.bind(recognizeStream, 'error'));
+  }).catch(resultsStream.emit.bind(resultsStream, 'error'));
 
-  /**
-   * Propagate error to new FormatStream
-   *
-   * @param {String} error message
-   */
-  function handleError(error) {
-    stream.emit('error', error);
-  }
-
-  // Capture error from original RecognizeStream
-  recognizeStream.on('error', handleError);
-
-  return stream;
+  return resultsStream;
 };
 
 

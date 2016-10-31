@@ -34,7 +34,7 @@ function TimingStream(opts) {
   var self = this;
   this.on('pipe', function(source) {
     source.on('end', function() {
-      self.sourceEnded = true; // todo: see if there's anything built-in that does this for us
+      self.sourceEnded = true;
       self.checkForEnd();
     });
   });
