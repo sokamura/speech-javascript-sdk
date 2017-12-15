@@ -38,7 +38,7 @@ var OPENING_MESSAGE_PARAMS_ALLOWED = [
   'speaker_labels'
 ];
 
-var QUERY_PARAMS_ALLOWED = ['customization_id', 'model', 'watson-token', 'X-Watson-Learning-Opt-Out'];
+var QUERY_PARAMS_ALLOWED = ['acoustic_customization_id', 'customization_id', 'customization_weight', 'model', 'watson-token', 'X-Watson-Learning-Opt-Out'];
 
 /**
  * pipe()-able Node.js Duplex stream - accepts binary audio and emits text/objects in it's `data` events.
@@ -70,6 +70,8 @@ var QUERY_PARAMS_ALLOWED = ['customization_id', 'model', 'watson-token', 'X-Wats
  * @param {Number} [options.X-Watson-Learning-Opt-Out=false] - set to true to opt-out of allowing Watson to use this request to improve it's services
  * @param {Boolean} [options.smart_formatting=false] - formats numeric values such as dates, times, currency, etc.
  * @param {String} [options.customization_id] - Customization ID
+ * @param {Number} [options.customization_weight] - Number between 0 and 1 representing the weight to give to words from the custom language model compared to those from the base model. The default value is 0.3.
+ * @param {String} [options.acoustic_customization_id] - The GUID of a custom acoustic model.
  *
  * @constructor
  */
